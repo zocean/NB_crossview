@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://vis.nucleome.org/static/lib/nb-dispatch.min.js"></script>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.10/semantic.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.3.3/vue.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.10/semantic.css">
+</head>
+
+<body style="width:100vw; height:100vh">
+  <h2 class="ui red center aligned header">Nucleome Browser Multi-channel Communication Demo</h2>
+  <div id="app"></div>
+  <div>
+    <label> NB Channel ID (In)</label>
+    <input type="text" id="nbChanIn" value="cnbChan01">
+  </div>
+    <div>
+    <label> NB Channel ID (Out)</label>
+    <input type="text" id="nbChanOut" value="cnbChan02">
+  </div>
+</body>
+
+<script>
+
+new Vue({
+    el: '#app',
+    template: `
+      <div class="ui centered grid">
+        <div class="two column row">
+          <div class="four wide column">
+            <div class="ui label">Mode</div>
+            <select class="ui dropsown" v-model="selectedMode">
+              <option value="">Select a Mode</option>
+              <option v-for="(country_obj, country) in places" :value="country">{{country}}</option>
+            </select>
+          </div>
+          <div class="four wide column">
+            <div class="ui label">Chain file</div>
+            <select class="ui dropsown" :disabled="countries.length == 0" v-model="selectedChain">
+              <option value="">Select a Chain file</option>
+              <option v-for="(city_obj, city) in countries">{{city}}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `,
+    data: function() {
+        return {
+            places: {
+                "Asia": {
+                    "China": ["Beijing", "Shanghai", "Guangzhou", "Tianjin"],
+                    "India": ["New Delhi", "Mumbai", "Bangalore", "Chennai"],
+                    "Japan": ["Tokyo", "Kyoto", "Nagoya", "Hiroshima"],
+                    "Singapore": ["Singapore"],
+                    "Malaysia": ["Kuala Lumpur", "Johor Bahru", "George Town", "Kota Kinabalu"]
+                },
+                "Europe": {
+                    "Germany": ["Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart"],
+                    "UK": ["London", "Birmingham", "Liverpool", "Bristol"],
+                    "France": ["Paris", "Marseille", "Bordeaux", "Toulouse"]
+                }
+            },
+            countries: [],
+            cities: [],
+            selectedMode: "",
+            selectedChain: "",
+        }
+    },
+    watch: {
+        selectedContinent: function() {
+            // Clear previously selected values
+            this.countries = [];
+            this.cities = [];
+            this.selectedCountry = "";
+            this.selectedCity = "";
+            // Populate list of countries in the second dropdown
+            if (this.selectedContinent.length > 0) {
+                this.countries = this.places[this.selectedContinent]
+            }
+        },
+        selectedCountry: function() {
+            // Clear previously selected values
+            this.cities = [];
+            this.selectedCity = "";
+            // Now we have a continent and country. Populate list of cities in the third dropdown
+            if (this.selectedCountry.length > 0) {
+                this.cities = this.places[this.selectedContinent][this.selectedCountry]
+            }
+        }
+    }
+})
+
+// Connect to nb-dispatch
+var nb_hub_in = nb.dispatch('update', 'brush');
+
+// Set the channel ID
+var nb_chan_in = document.getElementById('nbChanIn')
+nb_chan_in.addEventListener('input', updateInChanID);
+
+function updateInChanID(e) {
+  nb_hub_in.disconnect();
+  nb_hub_in.chanId(e.target.value);
+  nb_hub_in.connect(function (d) {});
+  console.log(nb_hub_in.status())
+}
+
+nb_hub_in.chanId('cnbChan01')
+nb_hub_in.connect(function (d) {});
+console.log(nb_hub_in.status())
+
+// Connect to nb-dispatch
+var nb_hub_out = nb.dispatch('update', 'brush');
+
+// Set the channel ID
+var nb_chan_out = document.getElementById('nbChanOut')
+nb_chan_out.addEventListener('input', updateOutChanID);
+
+function updateOutChanID(e) {
+  nb_hub_out.disconnect();
+  nb_hub_out.chanId(e.target.value);
+  nb_hub_out.connect(function (d) {});
+  console.log(nb_hub_out.status())
+}
+
+nb_hub_out.chanId('cnbChan02')
+nb_hub_out.connect(function (d) {});
+
+console.log(nb_hub_out.status())
+
+// Monitor current viewed region from the input channel, do liftover and send highlight to the output channel
+nb_hub_in.on('brush', function(d) {
+  var region_list = "";
+  for (let i = 0; i < d.length; i++) {
+    region_list += d[i].chr + ':' + d[i].start + '-' + d[i].end + ','
+  }
+  query_string = "http://127.0.0.1:8556/liftover?query=" + region_list.slice(0, -1)
+  console.log(query_string);
+  var oReq = new XMLHttpRequest();
+  oReq.open("GET", query_string, true);
+  oReq.responseType = "";
+  oReq.onload = function() {
+    if (oReq.readyState == oReq.DONE && oReq.status == 200) {
+      var newRegions = oReq.response;
+      if (newRegions) {
+        var lines = newRegions.split('\n')
+        var brushRegions = []
+        for (var i = 0; i < lines.length; i++) {
+          region = lines[i].split('\t')
+          if (region.length == 3) {
+            brushRegions.push({chr:region[0], start:region[1], end:region[2], color:"blue"})
+          }
+        }
+        console.log(brushRegions)
+        nb_hub_out.call("brush", this, brushRegions)
+      }
+    } 
+  }
+  oReq.send()
+});
+
+</script>
+</html>

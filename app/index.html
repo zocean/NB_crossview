@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://vis.nucleome.org/static/lib/nb-dispatch.min.js"></script>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.10/semantic.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.3.3/vue.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.2.10/semantic.css">
+</head>
+
+<body style="width:100vw; height:100vh">
+  <div>
+        <div id="app"></div>
+  </div>
+</body>
+
+<script>
+
+var vm = new Vue({
+    el: '#app',
+    template: `
+      <div style="margin-top:45px" class="ui grid centered middle aligned">
+        <div class="tweleve column row">
+          <h1 class="ui header">Nucleome Browser Multi-channel Communication Demo</h1>
+        </div>
+        <div class="tweleve column row">
+          <h2 class="ui grey header">Step 1: Select Chain file</h2>
+        </div>
+        <div class="three column row">
+          <div class="four wide column">
+            <div class="ui label">Visualization Mode</div>
+            <select class="ui dropdown" v-model="selectedMode">
+              <option value="">Select a Mode</option>
+              <option v-for="(mode_obj, mode) in chainfiles" :value="mode">{{mode}}</option>
+            </select>
+          </div>
+          <div class="four wide column">
+            <div class="ui label">Genome Assembly</div>
+            <select class="ui dropdown" :disabled="assemblies.length == 0" v-model="selectedAssembly">
+              <option value="">Select a Species</option>
+              <option v-for="(assembly_obj, assembly) in assemblies" :value="assembly">{{assembly}}</option>
+            </select>
+          </div>
+          <div class="four wide column">
+            <div class="ui label">Chain File</div>
+            <select class="ui dropdown" :disabled="chains.length == 0" v-model="selectedChain">
+              <option value="">Select a Chain file</option>
+              <option v-for="chain in chains">{{chain}}</option>
+            </select>
+          </div>
+        </div>
+        <div class="tweleve column row">
+          <h2 class="ui grey header">Step 2: Set NB Channel ID</h2>
+        </div>
+        <div class="two column row centered ">
+          <div class="six wide column">
+            <div class="ui label">NB Channel ID (In)</div>
+            <div class="ui input">
+              <input type="text" :style='{"background-color": channelStatusColor}' v-model="nbChanIn" @change="updateChannelIn" @input="input" placeholder="Edit me..">
+            </div>
+          </div>
+          <div class="six wide column">
+            <div class="ui label">NB Channel ID (Out)</div>
+            <div class="ui input">
+              <input type="text" :style='{"background-color": channelStatusColor}' v-model="nbChanOut" @change="updateChannelOut" @input="input" placeholder="Edit me..">
+            </div>
+          </div>
+        </div>
+        <div class="tweleve column row">
+          <h2 class="ui grey header">Step 3: View Result</h2>
+        </div>
+        <table class="ui selectable celled collapsing table">
+          <thead>
+            <tr>
+              <th>Region ID</th>
+              <th>Channel In</th>
+              <th>Channel Out</th>
+            </tr>
+          </thead>
+          <tbody v-for="region in regions" v-on:click="navigateToOut(region)">
+            <tr style="opacity:0.6">
+              <td :style='{"background-color": region.out.color}'>
+                {{region.id}}
+              </td>
+              <td>{{region.in.chr+':'+region.in.start+'-'+region.in.end}}</td>
+              <td>{{region.out.chr+':'+region.out.start+'-'+region.out.end}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `,
+    data: function() {
+        return {
+            chainfiles: {
+                "Highlight": {
+                    "hg38": ["hg38ToChm13"],
+                    "hg19": ["hg19ToHg38"]
+                },
+                "Ortholog": {
+                    "hg38": ["hg38ToMm10"]
+                }
+            },
+            assemblies: [],
+            chains: [],
+            selectedMode: "",
+            selectedAssembly: "",
+            selectedChain: "",
+            nbChanIn: "cnbChan01",
+            nbChanOut: "cnbChan02",
+            channelStatusColor: "#b2df8a",
+            regions: [],
+            nav: []
+        }
+    },
+    watch: {
+        selectedMode: function() {
+          // Clear previously selected values
+          this.assemblies = [];
+          this.chains = [];
+          this.selectedAssembly = "";
+          this.selectedChain = "";
+          // Populate list of countries in the second dropdown
+          if (this.selectedMode.length > 0) {
+              this.assemblies = this.chainfiles[this.selectedMode]
+          }
+        },
+        selectedAssembly: function() {
+            // Clear previously selected values
+            this.chains = [];
+            this.selectedChain = "";
+            // Now we have a continent and country. Populate list of cities in the third dropdown
+            if (this.selectedAssembly.length > 0) {
+                this.chains = this.chainfiles[this.selectedMode][this.selectedAssembly]
+            }
+        },
+        selectedChain: function() {
+        }
+    },
+    methods: {
+        updateChannelIn: function() {
+          nb_hub_in.disconnect();
+          nb_hub_in.chanId(this.nbChanIn);
+          nb_hub_in.connect(function (d) {});
+          this.channelStatusColor = "#b2df8a";
+        },
+        updateChannelOut: function() {
+          nb_hub_out.disconnect();
+          nb_hub_out.chanId(this.nbChanIn);
+          nb_hub_out.connect(function (d) {});
+          this.channelStatusColor = "#b2df8a";
+        },
+        input: function() {
+          this.channelStatusColor = "white";
+        },
+        navigateToOut: function(region) {
+          nb_hub_out.call("update", this, [{chr:region.out.chr, start:parseInt(region.out.start), end:parseInt(region.out.end)}]);
+        }
+    }
+})
+
+// Connect to nb-dispatch
+var nb_hub_in = nb.dispatch('update', 'brush');
+nb_hub_in.chanId('cnbChan01')
+nb_hub_in.connect(function (d) {});
+console.log(nb_hub_in.status())
+
+// Connect to nb-dispatch
+var nb_hub_out = nb.dispatch('update', 'brush');
+nb_hub_out.chanId('cnbChan02')
+nb_hub_out.connect(function (d) {});
+console.log(nb_hub_out.status())
+
+// Monitor current viewed region from the input channel, do liftover and send highlight to the output channel
+nb_hub_in.on('brush', function(d) {
+  if (vm._data.selectedMode == 'Highlight' && vm._data.selectedCahin != '') {
+    var region_list = "";
+    vm._data.regions = [];
+    for (let i = 0; i < d.length; i++) {
+      region_list += d[i].chr + ':' + d[i].start + '-' + d[i].end + ','
+    }
+    query_string = "http://127.0.0.1:8556/highlight?query=" + region_list.slice(0, -1) + "&label=" + vm._data.selectedChain
+    //console.log(query_string);
+    var oReq = new XMLHttpRequest();
+    oReq.open("GET", query_string, true);
+    oReq.responseType = "";
+    oReq.onload = function() {
+      if (oReq.readyState == oReq.DONE && oReq.status == 200) {
+        var newRegions = oReq.response;
+        if (newRegions) {
+          var lines = newRegions.split('\n');
+          var brushRegions = [];
+          for (var i = 0; i < lines.length; i++) {
+            region = lines[i].split('\t')
+            if (region.length == 3) {
+              brushRegions.push({chr:region[0], start:region[1], end:region[2], color:"blue"});
+              vm._data.regions.push({in:{chr:d[0].chr, start:d[0].start, end:d[0].end}, out:{chr:region[0], start:region[1], end:region[2]}, color:"#0000FF", id:i+1})
+            }
+          }
+          //console.log(brushRegions)
+          nb_hub_out.call("brush", this, brushRegions)
+        }
+      } 
+    }
+    oReq.send()
+  } else {
+  }
+});
+// Monitor current viewed region from the input channel, do liftover and send highlight to the output channel
+nb_hub_in.on('update', function(d) {
+  if (vm._data.selectedMode == 'Ortholog' && vm._data.selectedCahin != '') {
+    var region_list = "";
+    for (let i = 0; i < d.length; i++) {
+      region_list += d[i].chr + ':' + d[i].start + '-' + d[i].end + ','
+    }
+    query_string = "http://127.0.0.1:8556/ortho?query=" + region_list.slice(0, -1) + "&label=" + vm._data.selectedChain
+    //console.log(query_string);
+    var oReq = new XMLHttpRequest();
+    oReq.open("GET", query_string, true);
+    oReq.responseType = "";
+    oReq.onload = function() {
+      if (oReq.readyState == oReq.DONE && oReq.status == 200) {
+        var newRegions = oReq.response;
+        if (newRegions) {
+          var lines = newRegions.split('\n')
+          var brushRegionsIn = [];
+          var brushRegionsOut = [];
+          vm._data.regions = [];
+          for (var i = 0; i < lines.length; i++) {
+            result = lines[i].split('\t')
+            if (result.length == 7) {
+              brushRegionsIn.push({chr:result[0], start:result[1], end:result[2], color:result[6]});
+              brushRegionsOut.push({chr:result[3], start:result[4], end:result[5], color:result[6]});
+              vm._data.regions.push({in:{chr:result[0], start:result[1], end:result[2], color:result[6]}, out:{chr:result[3], start:result[4], end:result[5], color:result[6]}, id:i+1})
+            }
+          }
+          //console.log(brushRegionsIn)
+          //console.log(brushRegionsOut)
+          setTimeout(function() {nb_hub_in.call("brush", this, brushRegionsIn);}, 200);
+          setTimeout(function() {nb_hub_out.call("brush", this, brushRegionsOut);}, 200);
+        }
+      } 
+    }
+    oReq.send()
+  }
+});
+
+</script>
+</html>
